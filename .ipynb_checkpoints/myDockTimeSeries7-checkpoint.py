@@ -32,29 +32,8 @@ import numpy as np
 
 #Example of how to set color maskdata['Color'].loc[row] = pyqtgraph.mkColor(colordict[maskdata['Name'].loc[row]])
 
-pullDownMenu1 = {'g5L': [0.2, 0.15, 0.5] ,
-                 'g5R': [0.2, 0.15, 0.5],
-                 'g4L': [0.4, 0.5, 0.5],
-                 'g4R': [0.4, 0.5, 0.5],
-                 'g3L': [0.6, 0.2, 0],
-                 'g3R': [0.6, 0.2, 0],
+pullDownMenu1 = {'gamma1-L': [0.6, 0.2, 0.5] , 'gamma1-R': [0.3, 0.15, 0.5], 'Background' : [0.9, 0.9, 0.5]}
                  
-
-                 'a1L': [0.3, 0.2, 0.5],
-                 'a1R': [0.3, 0.2, 0.5],
-
-                 'b1L': [0.4, 0.2, 0.5],
-                 'b1R': [0.4, 0.2, 0.5],
-                 
-                 'b2L': [0.8, 0.5, 0],
-                 'b2R': [0.8, 0.5, 0.5],
-    
-                 "b'p2aL": [0.8, 0.5, 0],
-                 "b'p2aR": [0.8, 0.5, 0],
-                 "b'p2mpL": [0.8, 0.5, 0],
-                 "b'p2mpR": [0.8, 0.5, 0],
-  
-                 'Background' : [0.9, 0.9, 0.5]}
 
 
 '''
