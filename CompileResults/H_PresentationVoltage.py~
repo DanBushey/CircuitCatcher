@@ -1,0 +1,513 @@
+import pandas as pd
+import os
+import sys
+import numpy as np
+import matplotlib.pyplot as plt
+import matplotlib
+#folderModules = '/data/JData/A/A30FastROI/CircuitCatcher'
+#sys.path.append(folderModules)
+import ccModules as cc
+import ccModules2 as cc2
+import scipy
+import graphDB
+import pathlib
+
+mystyle = '/media/daniel/Windows1/Users/dnabu/Desktop/ResearchYogaWindows/DataJ/Programming/Python/Modules/matplotlib_style_template'
+plt.style.use(mystyle)
+
+
+from A68_init20180731 import *
+
+#load pandas data frame
+exceldata = pd.read_hdf(os.path.join(saveFig, 'Compiled_data.hdf5'), 'data')
+print(exceldata.shape)
+
+#pull out roi data and add each roi as separate row
+exceldata = cc2.pullIntensityData(exceldata)
+print(exceldata.shape)
+
+# check columns with selection criteria to make sure there are only the expected categories
+## use only flies with a good score
+print(exceldata['Grade'].unique())
+exceldata = exceldata[exceldata['Grade'] ==1]
+print(exceldata['Grade'].unique())
+
+##checking that stim type is consistent
+print(exceldata['Stim Protocol'].unique())
+exceldata = exceldata[exceldata['Stim Protocol'] == 'voltstim']
+print(exceldata['Stim Protocol'].unique())
+
+##get a count of remaining groups
+groups = exceldata.groupby(['Genotype', 'roi'])
+groups[['Sample Name', 'Cross']].count().to_excel(os.path.join(saveFig, 'CountsAll.xlsx'))
+
+#relabeling by transgene
+newdict = {}
+for ckey in transgene.keys():
+    newdict[transgene[ckey]['sensor']] = transgene[ckey]
+transgene = newdict
+
+#drop transgenes that are not found in the data
+for ckey in transgene.keys():
+    if ckey not in exceldata['Genotype'].unique():
+        newdict.pop(ckey, None)
+print(len(newdict.keys()))
+print(len(exceldata['Genotype'].unique()))
+transgene = newdict
+
+#short list of rois to investigate
+roiList = exceldata['roi'].unique().tolist()
+roiList = [roi for roi in roiList if roi != 'Background']
+print(roiList)
+
+saveFig = cc2.createBranch(['voltStim'], saveFig)
+##############################################################################################
+#line plots showing each individual raw intensity in grey and colored mean value for each transgene
+#page contains all genotypes for a single roi
+#
+plt.close('All')
+spacingL = 0.05
+spacingT =0.015
+leftmargin = 0.08
+topmargin = 0.02
+rightmargin = 0.01
+figsize = [10,8]
+#create directory to store data
+targetdirectory = cc2.createBranch(['ComparingIntensity', 'Raw_Intensity'], saveFig)
+#generating figures
+for croi in roiList:
+    for cgen in transgene.keys():
+        #select specific data
+        cdataframe = cc2.selectInFrame(exceldata, {'roi' : croi, 'Genotype' : cgen})
+        #convert data structure to a class for easy handling
+        cdataframe = cc2.intensityDataFrame(cdataframe)
+
+        ## create figure
+        plt.close('All')
+        fig1=plt.figure(figsize=figsize) #each figures will be specific for the roi
+        ax1 = fig1.add_axes([0.1, 0.1, 0.8, 0.8])
+        ### add voltage
+        ax2 = ax1.twinx()
+        volt = cc2.voltage(cdataframe.getVoltage()).plot(ax2)
+        ## plot single liens
+        intensitydata = cdataframe.getIntensityData().T
+        timeStamp = cdataframe.getTimeStamp()
+        for row in range(intensitydata.shape[1]):
+            ax1.plot(timeStamp, intensitydata[:, row], color = (0.5, 0.5, 0.5, 0.5))     
+        ## plot mean line
+        ax1.plot(timeStamp, np.mean(intensitydata, axis=1), color = transgene[cgen]['color'], linewidth=2)
+        ax1.set_xlim([0, timeStamp[-1]])
+        fig1.savefig(os.path.join(targetdirectory, cgen + croi  + '_rawtrace.jpeg'))
+        plt.close(fig1)
+
+##############################################################################################
+#line plots showing each individual normalized intensity in grey and colored mean value for each transgene
+#page contains all genotypes for a single roi
+#
+plt.close('All')
+spacingL = 0.05
+spacingT =0.015
+leftmargin = 0.08
+topmargin = 0.02
+rightmargin = 0.01
+figsize = [10,8]
+#create directory to store data
+targetdirectory = cc2.createBranch(['ComparingIntensity', 'Normalized_Intensity'], saveFig)
+#generating figures
+for croi in roiList:
+    for cgen in transgene.keys():
+        #select specific data
+        cdataframe = cc2.selectInFrame(exceldata, {'roi' : croi, 'Genotype' : cgen})
+        #convert data structure to a class for easy handling
+        cdataframe = cc2.intensityDataFrame(cdataframe)
+
+        ## create figure
+        plt.close('All')
+        fig1=plt.figure(figsize=figsize) #each figures will be specific for the roi
+        ax1 = fig1.add_axes([0.1, 0.1, 0.8, 0.8])
+        ### add voltage
+        ax2 = ax1.twinx()
+        volt = cc2.voltage(cdataframe.getVoltage()).plot(ax2)
+        ## plot single liens
+        intensitydata = cdataframe.getIntensityData().T / np.mean(cdataframe.getIntensityData(), axis =1)
+        timeStamp = cdataframe.getTimeStamp()
+        for row in range(intensitydata.shape[1]):
+            ax1.plot(timeStamp, intensitydata[:, row], color = (0.5, 0.5, 0.5, 0.5))     
+        ## plot mean line
+        ax1.plot(timeStamp, np.mean(intensitydata, axis=1), color = transgene[cgen]['color'], linewidth=2)
+        ax1.set_xlim([0, timeStamp[-1]])
+        fig1.savefig(os.path.join(targetdirectory, cgen + croi  + '_rawtrace.jpeg'))
+        plt.close(fig1)
+
+
+##############################################################################################
+#line plot comparing mean raw intensity values for all transgenes
+#page contains all genotypes for a single roi
+#
+plt.close('All')
+spacingL = 0.05
+spacingT =0.015
+leftmargin = 0.08
+topmargin = 0.02
+rightmargin = 0.01
+figsize = [10,8]
+#create directory to store data
+targetdirectory = cc2.createBranch(['ComparingIntensity', 'Raw_Intensity'], saveFig)
+#generating figures
+## create figure
+plt.close('All')
+fig1=plt.figure(figsize=figsize) #each figures will be specific for the roi
+ax1 = fig1.add_axes([0.1, 0.1, 0.8, 0.8])
+### add voltage
+ax2 = ax1.twinx()
+volt = cc2.voltage(cdataframe.getVoltage()).plot(ax2)
+for croi in roiList:
+    for cgen in transgene.keys():
+        #select specific data
+        cdataframe = cc2.selectInFrame(exceldata, {'roi' : croi, 'Genotype' : cgen})
+        #convert data structure to a class for easy handling
+        cdataframe = cc2.intensityDataFrame(cdataframe)
+
+   
+        ## plot single liens
+        intensitydata = cdataframe.getIntensityData().T 
+        timeStamp = cdataframe.getTimeStamp()
+        ## plot mean line
+        ax1.plot(timeStamp, np.mean(intensitydata, axis=1), color = transgene[cgen]['color'], linewidth=2)
+ax1.set_xlim([0, timeStamp[-1]])
+fig1.savefig(os.path.join(targetdirectory, 'Mean_rawtrace.jpeg'))
+plt.close(fig1)
+
+
+##############################################################################################
+#line plot comparing normalized intensity values for all transgenes
+#page contains all genotypes for a single roi
+#
+plt.close('All')
+spacingL = 0.05
+spacingT =0.015
+leftmargin = 0.08
+topmargin = 0.02
+rightmargin = 0.01
+figsize = [10,8]
+#create directory to store data
+targetdirectory = cc2.createBranch(['ComparingIntensity', 'Normalized_Intensity'], saveFig)
+#generating figures
+## create figure
+plt.close('All')
+fig1=plt.figure(figsize=figsize) #each figures will be specific for the roi
+ax1 = fig1.add_axes([0.1, 0.1, 0.8, 0.8])
+### add voltage
+ax2 = ax1.twinx()
+volt = cc2.voltage(cdataframe.getVoltage()).plot(ax2)
+for croi in roiList:
+    for cgen in transgene.keys():
+        #select specific data
+        cdataframe = cc2.selectInFrame(exceldata, {'roi' : croi, 'Genotype' : cgen})
+        #convert data structure to a class for easy handling
+        cdataframe = cc2.intensityDataFrame(cdataframe)
+
+   
+        ## plot single liens
+        intensitydata = cdataframe.getIntensityData().T/ np.mean(cdataframe.getIntensityData(), axis =1)
+        timeStamp = cdataframe.getTimeStamp()
+        ## plot mean line
+        ax1.plot(timeStamp, np.mean(intensitydata, axis=1), color = transgene[cgen]['color'], linewidth=2)
+ax1.set_xlim([0, timeStamp[-1]])
+fig1.savefig(os.path.join(targetdirectory, 'Mean_Normalized_trace.jpeg'))
+plt.close(fig1)
+
+
+############################################################################################
+#comparing deltaF/F between transgenes within each axis at each stim period
+#each figure contains one axis
+#each figure will contain a multiple geneotype
+#output is multiple graphs specific to roi, stim time
+plt.close('all')
+spacingL = 0.03
+spacingT =0.01
+leftmargin = 0.08
+topmargin = 0.02
+rightmargin = 0.09
+figsize = [11, 8]
+prestim = 5 # time in s to include before stimulation
+poststim = 20 # time after first stimulation to include
+
+stimPeriods, stimoffPeriods = cc2.voltage(cc2.intensityDataFrame(exceldata).getVoltage()).getVoltageStopStarts()
+
+rowG = 0 # rows are rois
+targetfolder1 = ['deltaFF']
+targetdirectory = cc2.createBranch(targetfolder1, saveFig)
+
+for crois in roiList:
+    for cstimindex, cstim in enumerate(stimPeriods):
+        fig1=plt.figure(figsize=figsize) 
+        ax1 = fig1.add_axes([0.08, 0.4, 0.4, 0.5])
+        ax12 = ax1.twinx()
+        volt = cc2.voltage(cc2.intensityDataFrame(exceldata).getVoltage()).plot(ax12)
+        for cgen in transgene.keys():
+            cdataframe = cc2.selectInFrame(exceldata, {'roi' : croi, 'Genotype' : cgen})
+            prestart = cstim - prestim
+            stop = stimoffPeriods[cstimindex] + poststim
+            dFF = cc2.intensityDataFrame(cdataframe).getdFF(prestart, cstim, stop, exceldata, transgene[cgen]['response'])
+            #ax1.plot(xrange1, dFF.deltaFF().T, color = transgene[page_group_names]['color'], linewidth =1, alpha = 0.3 )
+            ax1.plot(dFF.timeStamp, np.nanmean(dFF.deltaFF(), 0), color = transgene[cgen]['color'], linewidth =3, alpha = 0.8, label = transgene[cgen]['sensor'])
+            #ax1.set_ylim([-0.1, 1])
+        ax1.set_xlim([cstim-prestim, stimoffPeriods[cstimindex]+poststim])
+        ax1.set_title('deltaF / F')
+        ax1.set_ylabel('dF / F')
+        ax1.set_xlabel('Time (s)')
+        ax12.axis('off')
+        #ax12.set_ylabel('Volts (V)')
+        ax1.legend(bbox_to_anchor = (0.75, -0.6), loc=8)
+        
+        # Add another axis showing dF response
+        ax2 = fig1.add_axes([0.52, 0.4, 0.4, 0.5])
+        ax22 = ax2.twinx()
+        volt = cc2.voltage(cc2.intensityDataFrame(exceldata).getVoltage()).plot(ax22)
+        for cgen in transgene.keys():
+            cdataframe = cc2.selectInFrame(exceldata, {'roi' : croi, 'Genotype' : cgen})
+            prestart = cstim - prestim
+            stop = stimoffPeriods[cstimindex] + poststim
+            dFF = cc2.intensityDataFrame(cdataframe).getdFF(prestart, cstim, stop, exceldata, transgene[cgen]['response'])
+            #ax2.plot(xrange1, dFF.deltaFF().T, color = transgene[page_group_names]['color'], linewidth =1, alpha = 0.3 )
+            ax2.plot(dFF.timeStamp, np.nanmean(dFF.deltaF(), 0), color = transgene[cgen]['color'], linewidth =3, alpha = 0.8, label = transgene[cgen]['sensor'])
+            #ax2.set_ylim([-0.1, 1])
+        ax2.set_xlim([cstim-prestim, stimoffPeriods[cstimindex]+poststim])
+        ax2.set_title('deltaF')
+        ax2.set_ylabel('dF')
+        ax2.set_xlabel('Time (s)')
+        ax22.set_ylabel('Volts (V)')
+        
+        #add mean fluorescence during baseline period
+        ax3=fig1.add_axes([0.8, 0.07, 0.17, 0.25])
+        for cgen in transgene.keys():
+            cdataframe = cc2.selectInFrame(exceldata, {'roi' : croi, 'Genotype' : cgen})
+            prestart = cstim - prestim
+            stop = stimoffPeriods[cstimindex] + poststim
+            dFF = cc2.intensityDataFrame(cdataframe).getdFF(prestart, cstim, stop, exceldata, transgene[cgen]['response'])
+            ax3.bar(transgene[cgen]['position'], dFF.baseline_intensity(), align = 'center', color = transgene[cgen]['color'])
+        ax3.axes.get_xaxis().set_visible(False)
+        ax3.set_title('Mean Baseline Fluorescence')
+        ax3.set_ylabel('Mean Intensity')
+        fig1.savefig(os.path.join(targetdirectory, crois  + "{:.0f}".format(cstim)  + '.jpeg'))
+        plt.close(fig1)
+        
+            
+##################################################################################################################################################
+#Generating statistics - bar graphs
+#comparing each transgene  at each roi for each stim period
+#each figure contains one axis
+
+#functionName = ['Max', 'Mean', 'Median', 'SNR', 'delay2Max']
+#columns1 = ['Max_Absolute_dFF', 'Mean_dFF', 'Median_dFF', 'Signal2Noise', 'Delay_Peak_Amplitude', 'Min_Intensity_After', 'Decay_After'] # columngs for the dataframe holding data
+statsDict = {'Max' : 'Max_Absolute_dFF', 
+             'Mean': 'Mean_dFF',
+             'Median': 'Median_dFF', 
+             'SNR': 'Signal2Noise', 
+             'delay2Max':'Delay_Peak_Amplitude'
+             }
+
+
+plt.close('all')
+
+figsize = [22, 16]
+prestim = 5 # time in s to include before stimulation
+poststim = 3 # time after off period to be included
+#create figure storage location
+targetfolder = ['Statistics', 'Bar_Plots']
+targetdirectory = cc2.createBranch(targetfolder, saveFig)
+outputexcel= os.path.join(targetdirectory, 'Statistics_'+ '.xlsx') 
+writer = pd.ExcelWriter(outputexcel , engine = 'xlsxwriter')
+for cstat in statsDict.keys():
+    #create a pandas dataframe/multiindex to hold data
+    iterables = [roiList, stimPeriods.round().astype(np.int).tolist(), list(exceldata.groupby(['Genotype']).groups.keys())]
+    statsFrameIndex = pd.MultiIndex.from_product(iterables, names = ['roi', 'Stim_Period', 'Genotype'])
+    statsFrame = pd.DataFrame(index=statsFrameIndex, columns=[statsDict[cstat], 'Name'])
+    columns2 = ['Number', 'Median', 'Mean', 'Standard Error', 'Kruskal_Wallis']
+    columns2.extend(list(exceldata.groupby(['Genotype']).groups.keys()))
+    outputFrame = pd.DataFrame(index=statsFrameIndex, columns=columns2)
+    outputFrame['Name'] = ''
+    for crois in roiList:
+        for cstimindex, cstim in enumerate(stimPeriods):
+            fig1=plt.figure(figsize=figsize) #each figures will be specific for the roi
+            ax1 = fig1.add_axes([0.1, 0.1, 0.8, 0.8])
+            for cgen in transgene.keys():
+                cdataframe = cc2.selectInFrame(exceldata, {'roi' : croi, 'Genotype' : cgen})
+                if len(cdataframe) != 0: #control for groups that have no observations
+                    prestart = cstim - prestim
+                    stop = stimoffPeriods[cstimindex] + poststim
+                    dFF = cc2.intensityDataFrame(cdataframe).getdFF(prestart, cstim, stop, exceldata, transgene[cgen]['response'])
+                    cfun = 'dFF.' + cstat +'()'
+                    data = (eval(cfun))
+                    statsFrame[statsDict[cstat]].loc[crois, cstim.round().astype(np.int), cgen] = data
+                    data = data[~np.isnan(data)]
+                    outputFrame['Mean'].loc[crois, cstim.round().astype(np.int), cgen] = np.mean(data)
+                    outputFrame['Median'].loc[crois, cstim.round().astype(np.int), cgen] = np.median(data)
+                    outputFrame['Standard Error'].loc[crois, cstim.round().astype(np.int), cgen] = np.std(data) / np.sqrt(np.sum(~np.isnan(data)))
+                    outputFrame['Number'].loc[crois, cstim.round().astype(np.int), cgen] = len(data)
+                    name = cc2.intensityDataFrame(cdataframe).getName()
+                    statsFrame['Name'].loc[crois, cstim.round().astype(np.int), cgen] = name
+                    graphDB.scatterBarPlot(transgene[cgen]['position'], data)
+
+
+
+         
+                
+                ax1.set_ylabel(statsDict[cstat] + ' ' + crois)
+                ax1.set_title('Stim Time ' + str(cstim.round().astype(np.int)))
+            #add kruskal wallis and signrank to dataframe
+            outputFrame['Kruskal_Wallis'].loc[crois, cstim.round().astype(np.int), cgen] =scipy.stats.mstats.kruskalwallis(*statsFrame[statsDict[cstat]].loc[crois, cstim.round().astype(np.int)].values).pvalue   
+            for cgen, axFrame in exceldata.groupby(['Genotype']):
+                for cgen2, axFrame2 in exceldata.groupby(['Genotype']):
+                    data1 = statsFrame[statsDict[cstat]].loc[crois, cstim.round().astype(np.int), cgen]
+                    data1 = data1[~np.isnan(data1)]
+                    data2 = statsFrame[statsDict[cstat]].loc[crois, cstim.round().astype(np.int), cgen2]
+                    data2 = data2[~np.isnan(data2)]
+                    outputFrame[cgen].loc[crois, cstim.round().astype(np.int), cgen2] = scipy.stats.ranksums(data1,data2).pvalue
+
+            xlabel = np.empty(len(transgene.keys()), dtype=np.object)
+            for cgene in transgene.keys():
+                xlabel[transgene[cgene]['position']-1] = transgene[cgene]['sensor']
+            ax1.xaxis.set_ticklabels(xlabel, rotation = 'vertical')           
+
+            fig1.savefig(os.path.join(targetdirectory,  cstat+  crois + "{:.0f}".format(cstim)  + '.jpeg'))
+            plt.close(fig1)
+    outputFrame.reset_index().to_excel(writer, sheet_name = statsDict[cstat])
+writer.save()
+
+
+##################################################################################################################################################
+#Generating statistics - line plots
+#each figure contains one axis
+#x = stim duration
+#y= stat
+#each line corresponds to a different transgene
+#multiple figures corresponding to a different statistic
+
+#functionName = ['Max', 'Mean', 'Median', 'SNR', 'delay2Max']
+#columns1 = ['Max_Absolute_dFF', 'Mean_dFF', 'Median_dFF', 'Signal2Noise', 'Delay_Peak_Amplitude', 'Min_Intensity_After', 'Decay_After'] # columngs for the dataframe holding data
+statsDict = {'Max' : 'Max_Absolute_dFF', 
+             'Mean': 'Mean_dFF',
+             'Median': 'Median_dFF', 
+             'SNR': 'Signal_to_Noise', 
+             'delay2Max':'Delay_Peak_Amplitude',
+             'baseline_SD' : 'Baseline_Standard_Deviation_dFF',
+             'baseline_SD_dF' : 'Baseline_Standard_Deviation_dF',
+             'SNR_dF' : 'Signal_to_Noise_dF'
+             }
+
+plt.close('all')
+
+figsize = [4, 6]
+prestim = 5 # time in s to include before stimulation
+poststim =5 # time after first stimulation to include
+
+outputfolder1 = ['Statistics', 'Line_Plots']
+targetdirectory = cc2.createBranch(outputfolder1, saveFig)
+
+
+#stimPeriods = stimPeriods[:-1]
+#stopPeriods = stopPeriods[:-1]
+stimDur = []
+for i in zip(stimPeriods, stimoffPeriods):
+    stimDur.append(i[1] - i[0])
+stimVolt = []
+voltage = cc2.intensityDataFrame(exceldata).getVoltage()
+for i in stimPeriods:
+    stimVolt.append(round(float(voltage[int(i *100)]), 2))
+print(stimVolt)
+xlabel1 = 'Volts (V)'
+
+null_genotype = list(transgene.keys())[0]
+#stimPeriods = stimPeriods[:3]
+for cstat in statsDict.keys():
+    #create a pandas dataframe/multiindex to hold data
+    iterables = [roiList, stimPeriods.round().astype(np.int).tolist(), list(transgene.keys())]
+    statsFrameIndex = pd.MultiIndex.from_product(iterables, names = ['roi', 'Stim_Period', 'Genotype'])
+    statsFrame = pd.DataFrame(index=statsFrameIndex, columns=[statsDict[cstat], 'Name'])
+    columns2 = ['Number', 'Median', 'Mean', 'Standard Error', 'Kruskal_Wallis']
+    columns2.extend(list(exceldata.groupby(['Genotype']).groups.keys()))
+    outputFrame = pd.DataFrame(index=statsFrameIndex, columns=columns2)
+    outputFrame['Name'] = ''
+    for crois in roiList:
+        for cstimindex, cstim in enumerate(stimPeriods):
+            for cgen in list(transgene.keys()): #axFrame in exceldata.groupby(['Genotype']):
+                cdataframe = cc2.selectInFrame(exceldata, {'roi' : croi, 'Genotype' : cgen})
+                if len(cdataframe) != 0: #control for groups that have no observations
+                    prestart = cstim - prestim
+                    stop = stimoffPeriods[cstimindex] + poststim
+                    dFF = cc2.intensityDataFrame(cdataframe).getdFF(prestart, cstim, stop, exceldata, transgene[cgen]['response'])
+                    cfun = 'dFF.' + cstat +'()'
+                    data = (eval(cfun))
+                    statsFrame[statsDict[cstat]].loc[crois, cstim.round().astype(np.int), cgen] = data
+                    data = data[~np.isnan(data)]
+                    outputFrame['Mean'].loc[crois, cstim.round().astype(np.int), cgen] = np.mean(data)
+                    outputFrame['Median'].loc[crois, cstim.round().astype(np.int), cgen] = np.median(data)
+                    outputFrame['Standard Error'].loc[crois, cstim.round().astype(np.int), cgen] = np.std(data) / np.sqrt(np.sum(~np.isnan(data)))
+                    outputFrame['Number'].loc[crois, cstim.round().astype(np.int), cgen] = len(data)
+                    name = cc2.intensityDataFrame(cdataframe).getName()
+                    statsFrame['Name'].loc[crois, cstim.round().astype(np.int), cgen] = name
+                                                    
+            #add kruskal wallis and signrank to dataframe
+            #if all the results do not have the same value one can do a kruskal wallis test otherwise  make the kruskalwallis ==1
+            if np.any(np.concatenate(statsFrame[statsDict[cstat]].loc[crois, cstim.round().astype(np.int)].values) != np.concatenate(statsFrame[statsDict[cstat]].loc[crois, cstim.round().astype(np.int)].values)[0]):    
+                outputFrame['Kruskal_Wallis'].loc[crois, cstim.round().astype(np.int), cgen] =scipy.stats.mstats.kruskalwallis(*statsFrame[statsDict[cstat]].loc[crois, cstim.round().astype(np.int)].values).pvalue
+            else:
+                outputFrame['Kruskal_Wallis'].loc[crois, cstim.round().astype(np.int), cgen] = 1
+            for cgen in transgene.keys():#axFrame in exceldata.groupby(['Genotype']):
+                axFrame = exceldata[exceldata['Genotype'] == cgen]
+                for cgen2 in list(transgene.keys()): #, axFrame2 in exceldata.groupby(['Genotype']):
+                    axFrame2 = exceldata[exceldata['Genotype'] == cgen2]
+                    data1 = statsFrame[statsDict[cstat]].loc[crois, cstim.round().astype(np.int), cgen]
+                    data1 = data1[~np.isnan(data1)]
+                    data2 = statsFrame[statsDict[cstat]].loc[crois, cstim.round().astype(np.int), cgen2]
+                    data2 = data2[~np.isnan(data2)]
+                    outputFrame[cgen].loc[crois, cstim.round().astype(np.int), cgen2] = scipy.stats.ranksums(data1,data2).pvalue
+
+            xlabel = []
+            for cgene in transgene.keys():
+                xlabel.append(transgene[cgene]['sensor'])
+        #graph mean results in line plots
+        fig1=plt.figure(figsize=figsize) #each figures will be specific for the roi
+        #ax1 = fig1.add_axes([0.1, 0.1, 0.5, 0.8])
+        ax1 = fig1.add_axes([0.15, 0.15, 0.8, 0.8])
+        statsFrame = statsFrame.sort_index() # sorting is necessary to select the dseries otherwise produces an error
+        for cgen in list(transgene.keys()): #, axFrame in exceldata.groupby(['Genotype']):
+            axFrame = exceldata[exceldata['Genotype'] == cgen]
+            dseries  = statsFrame[statsDict[cstat]].loc[crois, :, cgen].copy()
+            dseries = dseries.reset_index()
+            dseries = dseries[statsDict[cstat]]
+            dseries = dseries.rename(dict(zip(dseries.index, stimVolt)))
+            graphDB.SElinePlotFrame(dseries, transgene[cgen]['color'], ax1, transgene[cgen]['sensor'])
+            #add statistics
+            t=[]
+            for i in dseries:
+                t.append(np.median(i))
+            u = []
+            for i2, cstim2 in enumerate(stimPeriods):
+                if outputFrame['Kruskal_Wallis'].loc[crois, cstim2.round().astype(np.int), null_genotype] < 0.05:
+                    #print(outputFrame['Kruskal_Wallis'].loc[crois, cstim2.round().astype(np.int), cgen2])
+                    if outputFrame[null_genotype].loc[crois, cstim2.round().astype(np.int), cgen] < 0.05:
+                            ax1.plot(stimVolt[i2], outputFrame['Mean'].loc[crois, cstim2.round().astype(np.int), cgen], 'x', markersize = 10, color = 'k')
+                            u.append(outputFrame['Median'].loc[crois, cstim2.round().astype(np.int), cgen])
+        ax1.set_ylabel(statsDict[cstat])
+        ax1.set_ylabel( 'deltaF/F')
+        ax1.set_xlabel(xlabel1)
+        #ax1.set_xlim([-0.2, 7])
+        #ax1.set_xlim([0, 8.2])
+        #ax1.legend(bbox_to_anchor=(1.05,1), loc= 2)
+        #fig1.show()
+        fig1.savefig(os.path.join(targetdirectory, crois + cstat + '.jpeg'))   
+        plt.close(fig1)
+
+###########################################
+#plotting the stimulation protocol
+figsize = [5,4]
+time = np.arange(0, len(voltage))/ 100
+fig1=plt.figure(figsize=figsize)
+ax1 = fig1.add_axes([0.15, 0.15, 0.8, 0.75])
+ax1.set_xlabel('Time (s)')
+ax1.set_ylabel('Volt (s)')
+ax1.plot(time, voltage)
+fig1.savefig(os.path.join(saveFig, 'StimulationProtocol.jpeg'))  

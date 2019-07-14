@@ -1,0 +1,34 @@
+import tables
+import pandas as pd
+import matplotlib.pyplot as plt
+import matplotlib.axes as ax
+import pathlibDB
+import pathlib 
+
+#find 'intensityData files'
+targetdir = '/home/daniel/Desktop/ResearchUbuntuYoga720/A58_MeanGirl/nSyb'
+dataframe = pathlibDB.getDirContents(targetdir)
+dataframe.head()
+dataframe = dataframe[dataframe['File_Name'].str.contains('Mask.hdf5')]
+dataframe
+
+#rename the roi names and give them distinct colors
+def getDistinctColors(n, name='hsv'):
+    '''Returns a function that maps each index in 0, 1, ..., n-1 to a distinct 
+    RGBalpha color; the keyword argument name must be a standard mpl colormap name.
+    n = number of distinct colors
+    '''
+    cmap = plt.cm.get_cmap(name, n)
+    rgb = [cmap(i) for i in range(n)]
+    return rgb
+
+for row, dseries in dataframe.iterrows():
+    #row = 2
+    #dseries =dataframe.iloc[row]
+    roidata = pd.read_hdf(dseries['Full_Path'],'roi')
+    newname = [str(i) for i in range(len(roidata))]
+    roidata['Name'] = newname
+    rgbs= getDistinctColors(len(roidata))
+    rgbs = [list(r[:3]) for r in rgbs]
+    roidata['Color'] = rgbs
+    roidata.to_hdf(dseries['Full_Path'],'roi')

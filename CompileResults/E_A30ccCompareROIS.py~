@@ -1,0 +1,133 @@
+'''
+Compare responses from transgenes between rois
+'''
+import pandas as pd
+import os
+import sys
+import numpy as np
+import matplotlib.pyplot as plt
+#folderModules = '/data/JData/A/A30FastROI/CircuitCatcher'
+#sys.path.append(folderModules)
+import ccModules
+import scipy
+import graphDB
+
+
+
+#sys.path.append(r'/HD4A/HD4A-JData/A32_Saline/Mg')
+sys.path.append(r'/media/daniel/Seagate Backup Plus Drive2/JData/A/A12_19F01-Gal4_CaMPARI/A12 Data/Analysis20171214')
+#sys.path.append(r'/media/daniel/Windows/Users/dnabu/Desktop/ResearchYogaWindows/DataJ/Programming/Python/Modules')
+from A12_init20171214 import *
+
+
+#load pandas data frame
+exceldata = pd.read_hdf(os.path.join(saveFig, 'Compiled_data.hdf5'), 'data')
+
+
+#pull out intensity data so that rois have separate rows rathater than being embbedded in the dicitonary
+dataframe = pd.DataFrame(columns = exceldata.columns)
+for row, dseries in exceldata.iterrows():
+    intensity_data=pd.DataFrame(dseries['intensity_data'])
+    for rowI, dseriesIntensity in intensity_data.iterrows():
+        for ccolumn in intensity_data.columns:
+            dseries[ccolumn] = dseriesIntensity[ccolumn]
+        #dseries.drop('intensity_data', inplace = True)
+        dataframe = dataframe.append(dseries)
+dataframe = dataframe.rename(columns = {'Name': 'roi'})
+dataframe.drop(['intensity_data'], axis = 1, inplace=True)
+exceldata = dataframe
+
+
+#function get intensity data from pandas group
+def getIntensityData(groupFrame):
+    raw_intensity = np.vstack(groupFrame['intensity'].values)
+    voltage = groupFrame['voltage'].iloc[0]
+    timeStamp = groupFrame['timestamp'].iloc[0]
+    name = []
+    for row, dSeries in groupFrame.iterrows():
+        name.append(str(dSeries['No.']) +'-'+ dSeries['Sample Name'])
+    return raw_intensity, voltage, timeStamp, name
+
+#used to match two dataframes for sample name and no
+def matchingFrame(matchFrame, allFrame, roi):
+    #matchframe = dataframe to match to
+    #allFrame = entire data frame
+    output = pd.DataFrame(columns=allFrame.columns)
+    for row, dseries in matchFrame.iterrows():
+        No = allFrame['No.'] == dseries['No.']
+        Name =  allFrame['Sample Name'] == dseries['Sample Name']
+        roilist = allFrame['roi'] == roi
+        output = output.append( allFrame[No.values & Name.values & roilist.values])
+    return output
+
+def getSpacingSize(number, margin1, margin2, spacing):
+    #get spacing for graphs
+    return (1- margin1 - margin2 - spacing*(number))/(number)
+
+
+def getXYSScoordinates(xnum, ynum, graphsizeX, graphsizeY, leftmargin, rightmargin, topmargin, bottommargin, spacingL, spacingT):
+    #returns the [x, y, xdistance, ydistance] for current axis position
+    return [ leftmargin +(xnum)*(graphsizeX + spacingL), 1-((ynum+1)*(graphsizeY+spacingT))-topmargin, graphsizeX, graphsizeY]
+########################################################################
+#line plots
+#each page as a different genotype
+#y axis = max deltaF/F
+#x-axis = roi (Body, M1, M4 M8-10)
+#multiple plots  = each test period
+#compare only stim period at 120s
+
+plt.close('all')
+spacingL = 0.05
+spacingT =0.015
+leftmargin = 0.08
+topmargin = 0.02
+rightmargin = 0.01
+figsize = [22, 16]
+
+voltage = exceldata['voltage'].iloc[0]
+voltageDiff = np.diff(voltage, axis = 0)
+stimPeriods = (np.where(voltageDiff > 0 )[0] +1) / 100
+cstim = stimPeriods[3]
+constant_roi = 'M8-10'
+variable_rois = ['Body', 'M1', 'M4']
+prestim = 5 # time in s to include before stimulation
+poststim = 20 # time after first stimulation to include
+
+statsDict = {'Max' : 'Max_Absolute_dFF', 
+             'Mean': 'Mean_dFF',
+             'Median': 'Median_dFF', 
+             'SNR': 'Signal2Noise', 
+             'delay2Max':'Delay_Peak_Amplitude'
+             }
+
+
+for page_group, pageFrame in exceldata.groupby(['Genotype']):
+    print('starting graph')
+    fig1=plt.figure(figsize=figsize) #each figures will be specific for the roi
+    #determining graph placement
+    #remove background from roi list
+    
+    n_rows =len(variable_rois)  # determine the number of rows
+    n_cols =  1 #number of columns
+    graphsizeX = getSpacingSize(n_cols, leftmargin, rightmargin, spacingL)
+    graphsizeY = getSpacingSize(n_rows, topmargin, topmargin, spacingT)
+    rowG = 0 # rows are rois
+    colG = 0
+    for fig_group in variable_rois:
+        ax1 = fig1.add_axes(getXYSScoordinates(colG, rowG, graphsizeX, graphsizeY, leftmargin, rightmargin, topmargin, topmargin, spacingL, spacingT))
+        figFrame = pageFrame[pageFrame['roi'] == fig_group]
+        matchBackground = matchingFrame(figFrame, exceldata, 'Background')
+        background_intensity, voltage, stimesta, nameB = getIntensityData(matchBackground)
+        raw_intensity, voltage, timeStamp, name = getIntensityData(figFrame)
+        #remove missing data
+        indx = [i for i, s in enumerate(name) if 'NaN' != s]
+        background_intensity = background_intensity[indx, :]
+            
+        prestart = np.argmax(timeStamp > cstim-prestim)
+        stop = np.argmax(timeStamp > cstim+poststim)
+        start = np.argmax(timeStamp > cstim)
+        xrange1 = timeStamp[prestart : stop]
+        dFF = ccModules.fluorescent(raw_intensity[:, prestart : stop], background_intensity[:, prestart : stop], start-prestart, transgene[page_group_names]['response'],  xrange1)
+            
+
+

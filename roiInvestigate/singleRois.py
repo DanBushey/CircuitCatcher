@@ -1,0 +1,159 @@
+import tables
+import pandas as pd
+import matplotlib.pyplot as plt
+import matplotlib.axes as ax
+import pathlibDB
+import pathlib 
+
+#find 'intensityData files'
+targetdir = '/home/daniel/Desktop/ResearchUbuntuYoga720/A58_MeanGirl/nSyb'
+dataframe = pathlibDB.getDirContents(targetdir)
+dataframe.head()
+dataframe = dataframe[dataframe['File_Name'].str.contains('IntensityData.hdf5')]
+dataframe
+
+#rename the roi names and give them distinct colors
+def getDistinctColors(n, name='hsv'):
+    '''Returns a function that maps each index in 0, 1, ..., n-1 to a distinct 
+    RGBalpha color; the keyword argument name must be a standard mpl colormap name.
+    n = number of distinct colors
+    '''
+    cmap = plt.cm.get_cmap(name, n)
+    rgb = [cmap(i) for i in range(n)]
+    return rgb
+'''
+for row, dseries in dataframe.iterrows():
+    #row = 2
+    #dseries =dataframe.iloc[row]
+    roidata = pd.read_hdf(dseries['Full_Path'],'intensity_data')
+    newname = [str(i) for i in range(len(roidata))]
+    roidata['Name'] = newname
+    rgbs= getDistinctColors(len(roidata))
+    rgbs = [list(r[:3]) for r in rgbs]
+    roidata['Color'] = rgbs
+    roidata.to_hdf(dseries['Full_Path'],'intensity_data')
+'''
+# make outputdirectories
+dataframe['Output'] = ''
+for row, dseries in dataframe.iterrows():
+    outputfolder = pathlib.Path(dseries['Parent']) / 'output'
+    if not outputfolder.is_dir():
+        outputfolder.mkdir()
+    dataframe['Output'].loc[row] = str(outputfolder)
+
+#get the image file
+findstring = '1.hdf5'
+dataframe['Image'] = ''
+import osDB
+import os
+for row, dseries in dataframe.iterrows():
+    file1, index = osDB.getFileContString(dseries['Parent'], findstring)
+    dataframe['Image'].loc[row] = os.path.join(dseries['Parent'], file1.values[0])
+dataframe['Image'].values
+
+#write figures for each roi into the output folder
+import numpy as np
+def getSummaryImage(img_file):
+    #img_files = pandas dataframe with row = individual images and columns name = where images can be found
+    #need to determine whether the files are hdf5 or tif
+        
+    #sometimes path file name change so need to search again for #####.hdf5 file
+    HDF5_file = tables.open_file(img_file, mode='r')
+    timeseries = HDF5_file.root.data[:, : , :,:, 1 ]
+    timeseries = timeseries.squeeze()
+    #stdImg = np.squeeze(np.std(timeseries, axis = 0))
+    #images were rotated for correct orientation in pyqtgraph
+    #stdImg = stdImg.T
+    #STD = timeseries.std(axis = 0, dtype = np.float8)
+    #STD = STD.T
+    #STD1 = STD.compute()
+    MIP = timeseries.max(axis=0)
+    MIP = MIP.T
+    HDF5_file.close()
+    return MIP #STD.compute()
+
+def concatenateIndex(index1):
+    #contenate the index from multiple intensity_data files
+    index2 = []
+    for i in index1:
+        index2.append(index1[0][0])
+    return np.concatenate(index2)
+#make colors specific to animal
+
+import ccModules
+import skimage
+row = dataframe.index[2]
+sampleFrame = dataframe.loc[row]
+for rowSample, sampleFrame in dataframe.iterrows():
+    print('start', sampleFrame['Full_Path'])
+    rois = pd.read_hdf(sampleFrame['Full_Path'],'intensity_data')
+    MIP = getSummaryImage(sampleFrame['Image'])
+    hdf5 = tables.open_file(sampleFrame['Full_Path'])
+    voltage = hdf5.root.voltage[:]
+    timeStamp = hdf5.root.timeStamp[:]
+    hdf5.close()
+    intensity_data = pd.read_hdf(sampleFrame['Full_Path'], 'intensity_data')
+    #creating a figure for each roi
+    ## generate a series of axes with the signal from each roi
+    grouped = intensity_data.groupby(['Name'], axis=0).groups 
+    for cg in grouped:
+        print(cg)
+        
+        fig1=plt.figure(figsize=(10,8))
+        ax1 = fig1.add_axes([0.01, 0.95, 0.9, 0.5])
+        title2 = cg + '-' + sampleFrame['File_Name'][:-19]
+        ax1.text(0,0, title2)
+        ax1.axis('off') 
+        #add axis to plot intensity values for the given roi
+        ax2=fig1.add_axes([0.1, 0.1, 0.8, 0.4])
+        cintensitydata = intensity_data['intensity'].loc[grouped[cg]].values
+        cintensitydata = np.concatenate(cintensitydata)
+        ax2.plot(timeStamp, np.mean(cintensitydata, axis=0), color = intensity_data['Color'].loc[grouped[cg]].values[0])
+        ax2.set_ylabel('Raw Intensity ' + cg)
+        ax21 = ax2.twinx()
+        ax21.set_ylabel('LED Power (V)')
+        stimTimesRange = np.array(range(len(voltage)))/100.0
+        ax21.plot(stimTimesRange,  voltage, color = 'r', linestyle = '--', alpha=0.4)
+        ax2.set_xlabel('Time (s)')
+            #ax2.set_title('Raw Intensity Traces')
+    
+        # show maximum intensity projection 
+        ax3 = fig1.add_axes([0.1, 0.55, 0.4, 0.4])
+        ax3.imshow(np.max(MIP, axis =2), cmap='Greys_r', clim = [5000, 10000])
+        ax3.set_aspect('equal')
+        ax3.axis('off') 
+        ax3.set_title('MIP over time')
+        '''
+        #Generate a standard deviation image image
+        ax4 = fig1.add_axes([0.55, 0.55, 0.4, 0.4])
+        ax4.imshow(np.max(STD, axis=2), cmap='Greys_r')
+        ax4.set_aspect('equal')
+        ax4.axis('off') 
+        ax4.set_title('stanard dev. over time')
+        '''
+        mask1 = np.zeros(intensity_data['image_shape'].loc[grouped[cg]].values[0][1:-1])
+        if len(intensity_data['mask_index'].loc[grouped[cg]].values[0] ) >0 : #roi must contain more than one pixel
+            index = intensity_data['mask_index'].loc[grouped[cg]].values
+            index = concatenateIndex(index)
+            mask1.flat[index]=1
+            #mask1 = np.flipud(mask1)
+            #mask1 = mask1.reshape(intensity_data['image_shape'].loc[roi][1:-1])
+            mask1 = np.sum(mask1, axis = 0)
+            mask1[mask1 > 0 ] = 1
+            contours = skimage.measure.find_contours(mask1, 0.8)
+            for n, contour in enumerate(contours):
+                ax3.plot(contour[:, 1], contour[:, 0], linewidth = 2, color = intensity_data['Color'].loc[grouped[cg]].values[0])
+                #ax4.plot(contour[:, 1], contour[:, 0], linewidth = 2, color = color1)
+            #lbl = scipy.ndimage.label(mask1)
+            #indexC = scipy.ndimage.center_of_mass(mask1)
+            #ax3.text(indexC[1], indexC[0], intensity_data['Name'].loc[roi], color=intensity_data['Color'].loc[grouped[cg]].values[0])
+            #ax4.text(indexC[1], indexC[0], intensity_data['Name'].loc[roi], color=intensity_data['Color'].loc[grouped[cg]].values[0])
+    
+            #plt.show()
+        name = cg + '.jpeg'
+        print(sampleFrame['Output'])
+        fig1.savefig(pathlib.Path(sampleFrame['Output']) / name , dpi =300)
+        plt.close(fig1)
+    
+    
+
