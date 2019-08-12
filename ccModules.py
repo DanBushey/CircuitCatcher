@@ -1708,6 +1708,7 @@ def generateHDFfromStackedTimeSeries(outputTime_Series, output_MIPtime, path, fa
     max1 = [] #record max values
     stackmetadata = {}
     for i, cfile in enumerate( np.sort(fastz_tif)):
+        print(str(Path(path) / cfile))
         img = np.squeeze(imread(str(Path(path) / cfile)).compute())
         shift, error, diffphase = register_translation(sample_data, img)
         offset_image = fourier_shift(np.fft.fftn(img), shift)
@@ -1782,3 +1783,8 @@ def generateHDFfromStackedTimeSeries(outputTime_Series, output_MIPtime, path, fa
 
     MIPfile.close()
     hdf5_file.close()
+    #delete the tif files
+    for cfile in fastz_tif:
+        path_file = Path(path) / cfile
+        path_file.unlink()
+    
